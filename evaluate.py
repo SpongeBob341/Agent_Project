@@ -33,7 +33,8 @@ def main():
     total_count = 0
     
     # limit number of questions for a quick test
-    subset_data = data[:1] 
+    subset_data = data[:1] # Maths
+    #subset_data = data[700:] # Common sense
 
     print(f"--- Starting Evaluation on {len(subset_data)} items ---")
 
@@ -53,6 +54,7 @@ def main():
         
         print(f"Expected: {expected}")
         print(f"Predicted: {prediction}")
+        print(f'LLMs calls: {agent.call_count}')
         print(f"Result: {'✅ CORRECT' if is_correct else '❌ INCORRECT'}")
 
         if is_correct:

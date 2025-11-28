@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Generate a placeholder answer file that matches the expected auto-grader format.
 

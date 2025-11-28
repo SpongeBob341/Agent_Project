@@ -5,31 +5,33 @@ class InferenceAgent:
     def __init__(self, model_name=None, verbose=False):
         self.model_name = model_name  
         self.verbose = verbose
+        self.call_count = 0
 
     def solve(self, question: str) -> str:
         """
         Main entry point. Currently uses Chain-of-Thought.
-        Future updates will add logic to select between methods (CoT, Self-Consistency, etc.)
         """
+        self.call_count = 0
         return self.chain_of_thought(question)
 
     def chain_of_thought(self, question: str) -> str:
-        """
-        Algorithm 1: Chain-of-Thought.
-        Asks the model to think step-by-step, then extracts the answer.
-        """
+        
         # Construct the prompt
         system_prompt = (
             "You are an expert reasoning agent. "
-            "Think through the problem first to ensure accuracy. "
-            "Finally, provide the answer in a clear format."
+            #"Thinking plan: MUST engage in thorough, systematic reasoning before EVERY response"
+            "Go through the problem step by step"
+            "Break down complex problems into components"
+            #"Think through the problem step by step to ensure accuracy. "
+            #"Provide the answer in a clear format."
+            #"Reply with only the final answer—no explanation."
         )
         
         user_prompt = (
             f"Question: {question}\n\n"
             "Please solve this step-by-step.\n"
             "At the very end of your response, write the final answer strictly in this format: "
-            "[[FINAL ANSWER: <your answer>]]"
+            "[[FINAL ANSWER: <your answer>]], True/False"
         )
 
         # Call the Model
@@ -38,6 +40,8 @@ class InferenceAgent:
             system=system_prompt,
             temperature=0.3 
         )
+
+        self.call_count += 1
 
         if not response['ok']:
             return "Error: API call failed."
