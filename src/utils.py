@@ -12,7 +12,7 @@ def call_model_chat_completions(prompt: str,
                                 system: str = "You are a helpful assistant. Reply with only the final answer—no explanation.",
                                 model: str = MODEL,
                                 temperature: float = 0.0,
-                                timeout: int = 60) -> dict:
+                                timeout: int = 120) -> dict:
     """
     Calls the specific /v1/chat/completions endpoint provided for the class.
     
