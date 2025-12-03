@@ -16,10 +16,24 @@ def normalize_answer(text):
     """
     Simple normalization to match the dev data format.
     Removes whitespace and converts to lower case.
+    Also handles float-to-int conversion for numeric answers.
     """
     if text is None:
         return ""
-    return str(text).strip().lower()
+    s = str(text).strip().lower()
+    
+    # Try to convert to number and back to string to handle 20.0 == 20
+    try:
+        f_val = float(s)
+        if f_val.is_integer():
+            return str(int(f_val))
+        else:
+            # For non-integers, maybe limit precision or just return as is
+            return str(f_val)
+    except ValueError:
+        pass
+        
+    return s
 
 def main():
     if not DEV_DATA_PATH.exists():
@@ -30,14 +44,13 @@ def main():
     with open(DEV_DATA_PATH, "r", encoding="utf-8") as f:
         data = json.load(f)
 
-    agent = InferenceAgent(verbose=False)
+    agent = InferenceAgent(verbose=True)
     
     correct_count = 0
     total_count = 0
     
     # limit number of questions for a quick test
-    #subset_data = data[1:10] # Maths
-    subset_data = data[700:710] # Common sense
+    subset_data = data[0:10] + data[700:710]
 
     print(f"--- Starting Evaluation on {len(subset_data)} items ---")
 

@@ -38,7 +38,7 @@ def call_model_chat_completions(prompt: str,
             {"role": "user",   "content": prompt}
         ],
         "temperature": temperature,
-        "max_tokens": 8000,
+        "max_tokens": 1024,
     }
 
     try:
