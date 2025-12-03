@@ -38,57 +38,20 @@ class InferenceAgent:
         if self.verbose:
             print(f"\n[Router] Classified as: {category}")
 
-        # Generate Analogical Example (Self-Generated Example)
-        # We do this primarily for MATH and LOGIC where structure matters most.
-        example_context = ""
-        if "MATH" in category or "LOGIC" in category:
-            example_context = self.generate_analogical_example(question)
-
         # Generate Initial Candidate Answer
         initial_answer = ""
         if "MATH" in category:
             # Switch to ReAct for math to allow iterative solving and tool use
-            initial_answer = self.react_chain(question, context=example_context)
+            initial_answer = self.react_chain(question)
         elif "LOGIC" in category:
-             initial_answer = self.react_chain(question, context=example_context)
+             initial_answer = self.react_chain(question)
         else:
-            # For Common Sense, we might not need the heavy analogy, but we can pass it if generated.
-            initial_answer = self.self_consistency(question, context=example_context, num_samples=5)
+            initial_answer = self.self_consistency(question, num_samples=5)
 
         # Reflexion Step (Verify and Refine)
         final_answer = self.verify_and_refine(question, initial_answer)
         
         return final_answer
-
-    def generate_analogical_example(self, question: str) -> str:
-        """
-        Generates a similar problem with a solution to guide the model's reasoning.
-        """
-        if self.verbose:
-             print(f"\n--- Generating Analogical Example ---")
-
-        prompt = (
-            f"Question: {question}\n\n"
-            f"Please generate a similar problem (an analogy) that uses the same underlying logic, formula, or reasoning pattern. "
-            f"Then, provide a clear, step-by-step solution to this analogical problem. "
-            f"Do not solve the original question yet. Just provide the example/analogy."
-        )
-
-        response = call_model_chat_completions(
-            prompt=prompt,
-            system="You are a helpful tutor. Create a distinct but logically similar example problem and solve it.",
-            temperature=0.3
-        )
-        self.call_count += 1
-        
-        if not response['ok']:
-            return ""
-
-        example = response['text'].strip()
-        if self.verbose:
-            print(f"[Analogical Example]\n{example}\n")
-            
-        return example
 
     def verify_and_refine(self, question: str, initial_answer: str) -> str:
         """
@@ -105,12 +68,10 @@ class InferenceAgent:
         prompt = (
             f"Question: {question}\n"
             f"Proposed Answer: {initial_answer}\n\n"
-            f"You are an expert reviewer. Your job is to verify the Proposed Answer for correctness.\n"
-            f"1. Carefully check the logic and calculations.\n"
-            f"2. If the answer depends on code that failed or produced no output, assume it is incorrect.\n"
-            f"3. If the logic is flawed (e.g., assuming a formula that doesn't exist), correct it.\n\n"
+            f"Review the Proposed Answer for correctness. "
+            f"Check for logical fallacies, calculation errors, or factual inaccuracies.\n"
             f"If the answer is correct, reply with exactly: [[VALID]]\n"
-            f"If the answer is incorrect, explain the error step-by-step and provide the correct Final Answer.\n"
+            f"If the answer is incorrect, explain why and provide the correct Final Answer.\n"
             f"End your response with the corrected answer in the format: [[FINAL ANSWER: <answer>]]"
         )
 
@@ -135,7 +96,7 @@ class InferenceAgent:
             return initial_answer
         
         # Extract corrected answer
-        match = re.search(r"((\[\[FINAL ANSWER:.*?]]))".format(critique), critique, re.DOTALL)
+        match = re.search(r"((\[\[FINAL ANSWER:.*?\]\]))", critique, re.DOTALL)
         if match:
             corrected_answer = match.group(1).strip()
             if self.verbose:
@@ -156,10 +117,7 @@ class InferenceAgent:
                 # Define a safe-ish local scope
                 local_scope = {}
                 exec(code, {'__name__': '__main__', 'print': print}, local_scope)
-            result = output_buffer.getvalue().strip()
-            if not result:
-                return "Error: Code executed successfully but produced no output. You MUST use print() to see the result."
-            return result
+            return output_buffer.getvalue().strip()
         except Exception as e:
             return f"Error executing code: {e}"
 
@@ -241,13 +199,15 @@ class InferenceAgent:
                     else:
                         return f"Error: Code execution failed after {max_retries+1} attempts. Last error: {result}"
 
-                if "no output" in result.lower():
-                     if attempt < max_retries:
+                if not result:
+                    if attempt < max_retries:
                         if self.verbose:
-                             print(f"[PAL] No output captured. Retrying...")
-                        history += f"\n\n{result}"
+                            print(f"[PAL] No output captured. Retrying...")
+                        history += f"\n\nYour code executed but printed nothing. Please ensure you use `print(answer)` at the end."
                         continue
-
+                    else:
+                        return "Error: No output from Python script."
+                
                 return result
             else:
                 if attempt < max_retries:
@@ -260,7 +220,7 @@ class InferenceAgent:
         
         return "Error: Max retries reached in PAL."
 
-    def react_chain(self, question: str, context: str = "", max_turns: int = 5) -> str:
+    def react_chain(self, question: str, max_turns: int = 5) -> str:
         """
         Algorithm 4: ReAct (Reasoning + Acting)
         Interleaves reasoning (Thought), actions (Action/Action Input), and results (Observation).
@@ -288,11 +248,7 @@ class InferenceAgent:
         )
 
         # Initialize conversation with the question
-        history = ""
-        if context:
-            history += f"Here is a similar solved example for your reference (Analogy):\n{context}\n\n"
-        
-        history += f"Question: {question}\n"
+        history = f"Question: {question}\n"
 
         for i in range(max_turns):
             response = call_model_chat_completions(
@@ -309,7 +265,6 @@ class InferenceAgent:
                 
             step_text = response['text'].strip()
             
-            # The model might hallucinate the Observation. We need to cut it off if it generated it.
             if "Observation:" in step_text:
                 step_text = step_text.split("Observation:")[0].strip()
 
@@ -323,7 +278,7 @@ class InferenceAgent:
                 return step_text.split("Final Answer:")[1].strip()
 
             # Parse Action
-            # Regex to find Action: ... and Action Input: ...
+            
             action_match = re.search(r"Action:\s*(.*)", step_text, re.IGNORECASE)
             input_match = re.search(r"Action Input:\s*(.*)", step_text, re.DOTALL | re.IGNORECASE)
 
@@ -331,7 +286,6 @@ class InferenceAgent:
                 action = action_match.group(1).strip()
                 action_input = input_match.group(1).strip()
                 
-                # Clean up code block markers if present in input
                 action_input = action_input.replace("```python", "").replace("```", "").strip()
 
                 observation = ""
@@ -348,29 +302,29 @@ class InferenceAgent:
                 if self.verbose:
                     print(f"[ReAct Observation] {observation}")
             else:
-                # If no action found but no final answer, the model might be rambling or confused.
-                # Force it to continue or stop.
                 if self.verbose:
                     print("[ReAct] No action detected. Asking to continue...")
                 history += "Observation: Invalid format. Please follow Thought -> Action -> Action Input format or provide Final Answer.\n"
 
         return "Error: Max ReAct turns reached without Final Answer."
 
-    def chain_of_thought(self, question: str, context: str = "") -> str:
+    def chain_of_thought(self, question: str) -> str:
         
         # Construct the prompt
         system_prompt = (
             "You are a reasoning agent. "
             "Go through the problem step by step"
+            
+            
+            #"Break down complex problems into components"
+            #"Think through the problem step by step to ensure accuracy. "
+            #"Provide the answer in a clear format."
+            #"Reply with only the final answer—no explanation."
         )
         
-        user_prompt = ""
-        if context:
-            user_prompt += f"Here is a similar solved example for your reference:\n{context}\n\n"
-
-        user_prompt += (
+        user_prompt = (
             f"Question: {question}\n\n"
-            "Please solve this step-by-step.\n"
+            #"Please solve this step-by-step.\n"
             "At the very end of your response, write the final answer strictly in this format: "
             "[[FINAL ANSWER: <your answer>]], True/False"
         )
@@ -401,14 +355,14 @@ class InferenceAgent:
 
         # Extract the answer using Regex
         # [[FINAL ANSWER: ... ]]
-        match = re.search(r"((\[\[FINAL ANSWER:.*?]]))".format(full_text), full_text, re.DOTALL)
+        match = re.search(r"((\[\[FINAL ANSWER:.*?\]\]))", full_text, re.DOTALL)
         
         if match:
             return match.group(1).strip()
         else:
             return full_text.strip()
         
-    def self_consistency(self, question: str, context: str = "", num_samples: int = 5) -> str:
+    def self_consistency(self, question: str, num_samples: int = 5) -> str:
         """
         Algorithm 2: Self-Consistency (Majority Voting)
         """
@@ -419,7 +373,7 @@ class InferenceAgent:
 
         for i in range(num_samples):
             # We reuse the chain_of_thought method to get a single answer
-            ans = self.chain_of_thought(question, context=context)
+            ans = self.chain_of_thought(question)
             answers.append(ans)
 
         counts = Counter(answers)

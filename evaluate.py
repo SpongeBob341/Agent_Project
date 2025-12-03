@@ -8,7 +8,8 @@ sys.stdout.reconfigure(encoding='utf-8')
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), 'src')))
 
-from src.inference_agent import InferenceAgent
+#from src.inference_agent import InferenceAgent
+from src.inference_agent_legacy import InferenceAgent
 
 DEV_DATA_PATH = Path("data/cse476_final_project_dev_data.json")
 
@@ -50,7 +51,7 @@ def main():
     total_count = 0
     
     # limit number of questions for a quick test
-    subset_data = data[0:10] + data[700:710]
+    subset_data = data[0:5] #+ data[700:710]
 
     print(f"--- Starting Evaluation on {len(subset_data)} items ---")
 
