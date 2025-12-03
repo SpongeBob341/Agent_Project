@@ -15,7 +15,7 @@ class InferenceAgent:
         """
         self.call_count = 0
         #return self.chain_of_thought(question)
-        return self.self_consistency(question,10)
+        return self.self_consistency(question,5)
 
     def chain_of_thought(self, question: str) -> str:
         
