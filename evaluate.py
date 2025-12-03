@@ -33,8 +33,8 @@ def main():
     total_count = 0
     
     # limit number of questions for a quick test
-    subset_data = data[1:10] # Maths
-    #subset_data = data[700:] # Common sense
+    #subset_data = data[1:10] # Maths
+    subset_data = data[700:710] # Common sense
 
     print(f"--- Starting Evaluation on {len(subset_data)} items ---")
 

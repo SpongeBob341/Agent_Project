@@ -14,8 +14,8 @@ class InferenceAgent:
         Main entry point. Currently uses Chain-of-Thought.
         """
         self.call_count = 0
-        return self.chain_of_thought(question)
-        return self.self_consistency(question,5)
+        #return self.chain_of_thought(question)
+        return self.self_consistency(question,10)
 
     def chain_of_thought(self, question: str) -> str:
         
@@ -23,7 +23,7 @@ class InferenceAgent:
         system_prompt = (
             "You are a reasoning agent. "
             "Go through the problem step by step"
-            "Thinking plan: MUST engage in thorough, systematic reasoning before EVERY response"
+            "Thinking plan: if its a maths related question use python"
             
             #"Break down complex problems into components"
             #"Think through the problem step by step to ensure accuracy. "
