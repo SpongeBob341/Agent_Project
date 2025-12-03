@@ -2,6 +2,9 @@ import json
 import sys
 import os
 from pathlib import Path
+import sys
+
+sys.stdout.reconfigure(encoding='utf-8')
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), 'src')))
 
@@ -24,16 +27,16 @@ def main():
         return
 
     print(f"Loading data from {DEV_DATA_PATH}...")
-    with open(DEV_DATA_PATH, "r") as f:
+    with open(DEV_DATA_PATH, "r", encoding="utf-8") as f:
         data = json.load(f)
 
-    agent = InferenceAgent(verbose=True)
+    agent = InferenceAgent(verbose=False)
     
     correct_count = 0
     total_count = 0
     
     # limit number of questions for a quick test
-    subset_data = data[1:10] # Maths
+    subset_data = data[1:] # Maths
     #subset_data = data[700:] # Common sense
 
     print(f"--- Starting Evaluation on {len(subset_data)} items ---")

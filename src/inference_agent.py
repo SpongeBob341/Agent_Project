@@ -14,7 +14,7 @@ class InferenceAgent:
         Main entry point. Currently uses Chain-of-Thought.
         """
         self.call_count = 0
-        return self.chain_of_thought(question)
+        #return self.chain_of_thought(question)
         return self.self_consistency(question,5)
 
     def chain_of_thought(self, question: str) -> str:
