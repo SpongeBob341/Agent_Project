@@ -148,11 +148,34 @@ class Agent:
         history = prompts.REACT_PROMPT.format(question=question)
         messages = [{"role": "user", "content": history}]
         
-        for _ in range(3): # Max 7 steps
+        for i in range(7): # Max 7 steps
+            # Debug: Print total context length
+            total_chars = sum(len(m["content"]) for m in messages)
+            print(f"   [ReAct Step {i+1}] History Length: {total_chars} chars")
+            
+            # Context management: Summarize if too long, then hard cut if still too long.
+            if total_chars > 10000: # Threshold for summarization
+                print(f"   [ReAct] History Length: {total_chars} chars. Attempting summarization...")
+                self._summarize_history(messages)
+                
+                # Recalculate total_chars after potential summarization
+                total_chars = sum(len(m["content"]) for m in messages)
+                print(f"   [ReAct] History Length after summarization: {total_chars} chars")
+
+                # If still too long after summarization (or summarization was insufficient)
+                if total_chars > 15000 and len(messages) > 4: # Higher threshold for hard cut
+                    print("   [ReAct] History still too long. Applying Hard 3/4 Cut...")
+                    keep_start = messages[:1]
+                    keep_end = messages[-3:]
+                    messages = keep_start + keep_end
+                    # Final total_chars after pruning
+                    total_chars = sum(len(m["content"]) for m in messages) 
+                    print(f"   [ReAct] Pruned History Length: {total_chars} chars")
+            
             response = self.llm.chat_completion(messages, stop=["Observation:"])
             if not response:
                 break
-                
+            
             messages.append({"role": "assistant", "content": response})
             
             if "Final Answer:" in response:
@@ -162,7 +185,15 @@ class Agent:
                 code_match = re.search(r"```python(.*?)```", response, re.DOTALL)
                 if code_match:
                     code = code_match.group(1)
-                    obs = execute_python(code)
+                    # If code is excessively long, don't execute it, just return an error
+                    if len(code) > 3000: 
+                        obs = "Error: Generated code was too long. Please write concise code."
+                    else:
+                        obs = execute_python(code)
+                    
+                    # Truncate observation if huge
+                    if len(obs) > 2000:
+                        obs = obs[:2000] + "... [Output Truncated]"
                     messages.append({"role": "user", "content": f"Observation: {obs}\n"})
                 else:
                     messages.append({"role": "user", "content": "Observation: Error: No code block found.\n"})
@@ -173,6 +204,21 @@ class Agent:
                  messages.append({"role": "user", "content": "Observation: Invalid format. Please use Action: [Python Code / None]\n"})
         
         return None
+
+    def _summarize_history(self, messages: List[dict]):
+        # Keep the first message (Prompt + Question)
+        # Summarize everything else except the very last one (to keep continuity)
+        if len(messages) < 3: return
+        
+        to_summarize = messages[1:-1]
+        history_text = "\n".join([f"{m['role']}: {m['content']}" for m in to_summarize])
+        
+        prompt = prompts.SUMMARIZE_HISTORY_PROMPT.format(history=history_text)
+        summary = self.llm.chat_completion([{"role": "user", "content": prompt}])
+        
+        if summary:
+            # Replace the middle with the summary
+            messages[1:-1] = [{"role": "system", "content": f"Previous Steps Summary:\n{summary}"}]
 
     def aggregate_answers(self, answers: List[str]) -> Optional[str]:
         if not answers:
@@ -223,7 +269,7 @@ class Agent:
     def extract_final(self, text: Optional[str]) -> str:
         if not text: return "Error"
         text = str(text).strip()
-        print(text)
+        #print(text)
         # 1. Look for \boxed{...} (common in math)
         boxed_match = re.search(r"\\boxed\{(.*?)\}", text)
         if boxed_match:

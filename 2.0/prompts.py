@@ -35,8 +35,8 @@ Problem: {question}
 Plan: {plan}
 
 Structure your response as follows:
-1. Reasoning: Think step by step. Be concise.
-2. Answer: Output the result in the format: Final Answer: <answer>
+1. Reasoning: Think step by step. Be CONCISE (under 1000 words). Focus only on the necessary steps.
+2. Final Answer: Output the result in the format: Final Answer: <answer>
 
 Do not stop until you have printed the "Final Answer:".
 """
@@ -58,6 +58,12 @@ Thought: I have the final answer
 Final Answer: [The final answer]
 
 Question: {question}
+
+IMPORTANT:
+- Write CONCISE code.
+- Do NOT repeat comments.
+- Do NOT loop the same text.
+- If you are stuck, try a different approach.
 """
 
 SELF_CORRECTION_PROMPT = """The previous attempts to solve the problem failed or produced inconsistent results.
@@ -99,3 +105,13 @@ Error Message:
 Corrected Code:
 ```python
 """
+
+SUMMARIZE_HISTORY_PROMPT = """The reasoning history is getting too long.
+Summarize the following actions and observations concisely.
+Keep the key numerical results and important errors.
+Do not lose the context of what we are trying to solve.
+
+History:
+{history}
+
+Summary:"""
