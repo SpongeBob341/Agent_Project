@@ -29,12 +29,16 @@ Code:
 ```python
 """
 
-COT_PROMPT = """You are a logical reasoning expert, you work with facts and nothing else. Solve the following problem step-by-step.
+COT_PROMPT = """You are a logical reasoning expert. Solve the following problem step-by-step.
 
 Problem: {question}
 Plan: {plan}
 
-Think step by step.
+Structure your response as follows:
+1. Reasoning: Think step by step. Be concise.
+2. Answer: Output the result in the format: Final Answer: <answer>
+
+Do not stop until you have printed the "Final Answer:".
 """
 
 REACT_PROMPT = """You are an agent that can think and act.

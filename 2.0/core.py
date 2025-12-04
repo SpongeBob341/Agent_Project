@@ -28,7 +28,7 @@ class Agent:
         for i, s in enumerate(strategies_to_run):
             print(f"[Step {i+1}] Executing {s}...")
             ans = self.execute_strategy(question, plan_text, s)
-            print(f"   -> Raw Result: {ans}")
+            #print(f"   -> Raw Result: {ans}")
             if ans:
                 # Cleanup answer immediately
                 cleaned = self.extract_final(ans)
@@ -148,7 +148,7 @@ class Agent:
         history = prompts.REACT_PROMPT.format(question=question)
         messages = [{"role": "user", "content": history}]
         
-        for _ in range(7): # Max 7 steps
+        for _ in range(3): # Max 7 steps
             response = self.llm.chat_completion(messages, stop=["Observation:"])
             if not response:
                 break
@@ -221,15 +221,32 @@ class Agent:
         return text
 
     def extract_final(self, text: Optional[str]) -> str:
-        if not text: 
-            return "Error_extract1"
-        # Heuristic: if text is just a number, return it
-        if text.strip().replace(".","").isdigit():
-             return text.strip()
+        if not text: return "Error"
+        text = str(text).strip()
         print(text)
-        messages = [
-            {"role": "user", "content": prompts.EXTRACT_ANSWER_PROMPT.format(text=text)}
-        ]
-        res = self.llm.chat_completion(messages)
-        #print(res)
-        return res.strip() if res else "Error_extract2"
+        # 1. Look for \boxed{...} (common in math)
+        boxed_match = re.search(r"\\boxed\{(.*?)\}", text)
+        if boxed_match:
+            return boxed_match.group(1)
+            
+        # 2. Look for "Final Answer: ..."
+        # We use re.IGNORECASE and look for the last occurrence
+        fa_match = re.search(r"Final Answer:\s*(.*)", text, re.IGNORECASE | re.DOTALL)
+        if fa_match:
+            # Take the first line after "Final Answer:" to avoid capturing trailing context
+            return fa_match.group(1).strip().split('\n')[0]
+            
+        # 3. Look for "The answer is ..."
+        ans_match = re.search(r"The answer is\s*(.*)", text, re.IGNORECASE | re.DOTALL)
+        if ans_match:
+            return ans_match.group(1).strip().split('.')[0]
+            
+        # 4. Fallback: If it looks like a single number or short phrase (e.g. from PAL output), return it
+        lines = [L.strip() for L in text.split('\n') if L.strip()]
+        if lines:
+            last_line = lines[-1]
+            # If it's short enough, assume it's the answer
+            if len(last_line) < 100:
+                return last_line
+                
+        return text
