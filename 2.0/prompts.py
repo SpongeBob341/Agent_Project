@@ -1,19 +1,14 @@
-
 PLANNER_PROMPT = """You are an intelligent problem solver.
 Your goal is to analyze the given user question and create a step-by-step plan to solve it.
 
-1. Identify the type of problem: "Math", "Logic", or "Common Sense".
-2. Break down the problem into logical steps.
-3. Determine if Python code would be useful (e.g., for calculations, simulations) or if verbal reasoning is better.
-
 Question: {question}
 
-Output format:
-Type: [Math/Logic/Common Sense]
-Plan:
+Analyze the problem and output the following:
+PROBLEM_TYPE: [Math/Logic/Common Sense]
+PLAN:
 1. ...
 2. ...
-Recommendation: [Use Python/Use Reasoning]
+STRATEGY_RECOMMENDATION: [Use Python/Use Reasoning]
 """
 
 PAL_PROMPT = """You are a Python expert. Write a Python script to solve this problem.
@@ -29,13 +24,17 @@ Code:
 ```python
 """
 
-COT_PROMPT = """You are a logical reasoning expert. Solve the following problem step-by-step.
+COT_PROMPT = """You are an expert in maths, reasoning, common sense, and general knowledge, think step by step.
 
 Problem: {question}
 Plan: {plan}
 
+Instructions:
+- For Logical/Math problems: Think step-by-step.
+- For Common Sense/Factual problems: Think step-by-step, Retrieve knowledge and verify facts.
+
 Structure your response as follows:
-1. Reasoning: Think step by step. Be CONCISE (under 1000 words). Focus only on the necessary steps.
+1. Reasoning: Be CONCISE (under 1000 words). Focus only on the necessary steps or facts.
 2. Final Answer: Output the result in the format: Final Answer: <answer>
 
 Do not stop until you have printed the "Final Answer:".
@@ -75,7 +74,7 @@ Previous Attempts/Errors:
 Analyze why these might have failed.
 Then, provide a NEW, BETTER prompt or strategy to solve it.
 Finally, try to solve it yourself using that new perspective.
-Only output the Final Answer in the end.
+Output the result in the format: Final Answer: <answer>
 """
 
 EXTRACT_ANSWER_PROMPT = """You are a strict answer extractor.
@@ -115,3 +114,20 @@ History:
 {history}
 
 Summary:"""
+
+COT_FACT_CHECK_PROMPT = """You are a strict reviewer. You have just generated a solution to a problem.
+Now, double-check your own work for logic flaws or calculation errors.
+
+Problem: {question}
+
+Your Original Reasoning & Answer:
+{reasoning}
+
+Task:
+1. Verify the calculations and logic.
+2. If correct, repeat the final answer.
+3. If incorrect, provide the corrected reasoning and answer.
+
+Output format:
+Final Answer: <answer>
+"""

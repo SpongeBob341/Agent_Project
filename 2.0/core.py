@@ -10,7 +10,7 @@ class Agent:
         self.llm = LLMClient()
 
     def solve(self, question: str) -> str:
-        # 1. Analyze & Plan
+        # Analyze & Plan
         plan_output = self.plan(question)
         problem_type, plan_text, strategy = self.parse_plan(plan_output)
         
@@ -21,14 +21,14 @@ class Agent:
         
         strategies_to_run = []
         if strategy == "Python":
-            strategies_to_run = ["Python", "Python", "ReAct"]
+            strategies_to_run = ["Python", "Python", "CoT", "ReAct"]
         else:
             strategies_to_run = ["CoT", "CoT", "ReAct"]
             
         for i, s in enumerate(strategies_to_run):
             print(f"[Step {i+1}] Executing {s}...")
-            ans = self.execute_strategy(question, plan_text, s)
-            #print(f"   -> Raw Result: {ans}")
+            ans = self.execute_strategy(question, plan_text, s, problem_type)
+            print(f"   -> Raw Result: {ans}")
             if ans:
                 # Cleanup answer immediately
                 cleaned = self.extract_final(ans)
@@ -59,29 +59,30 @@ class Agent:
     def parse_plan(self, plan_text: str) -> Tuple[str, str, str]:
         p_type = "Logic"
         strategy = "Reasoning"
+        plan_content = plan_text
         
-        lower_plan = plan_text.lower()
-        if "type: math" in lower_plan:
-            p_type = "Math"
-        elif "type: logic" in lower_plan:
-            p_type = "Logic"
-        elif "type: common sense" in lower_plan:
-            p_type = "Common Sense"
+        type_match = re.search(r"PROBLEM_TYPE:\s*(Math|Logic|Common Sense)", plan_text, re.IGNORECASE)
+        if type_match:
+            p_type = type_match.group(1).strip()
             
-        if "use python" in lower_plan:
-            strategy = "Python"
-        else:
-            strategy = "Reasoning"
+        strategy_match = re.search(r"STRATEGY_RECOMMENDATION:\s*(Use Python|Use Reasoning)", plan_text, re.IGNORECASE)
+        if strategy_match:
+            strategy = strategy_match.group(1).replace("Use ", "").strip() # "Python" or "Reasoning"
             
-        return p_type, plan_text, strategy
+        # Extract the actual plan text (everything between PLAN: and STRATEGY_RECOMMENDATION:)
+        plan_content_match = re.search(r"PLAN:(.*?)STRATEGY_RECOMMENDATION:", plan_text, re.DOTALL)
+        if plan_content_match:
+            plan_content = plan_content_match.group(1).strip()
 
-    def execute_strategy(self, question: str, plan: str, strategy: str) -> Optional[str]:
+        return p_type, plan_content, strategy
+
+    def execute_strategy(self, question: str, plan: str, strategy: str, problem_type: str = "Logic") -> Optional[str]:
         if strategy == "Python":
             return self.solve_pal(question, plan)
         elif strategy == "ReAct":
             return self.solve_react(question)
         else: # CoT
-            return self.solve_cot(question, plan)
+            return self.solve_cot(question, plan, problem_type)
 
     def solve_pal(self, question: str, plan: str) -> Optional[str]:
         messages = [
@@ -101,7 +102,7 @@ class Agent:
             current_code = code_match.group(1)
         else:
             return None
-        print(current_code)
+        #print(current_code)
         # Execution Loop
         for i in range(3):
             result = execute_python(current_code)
@@ -136,12 +137,24 @@ class Agent:
                 
         return None
 
-    def solve_cot(self, question: str, plan: str) -> Optional[str]:
+    def solve_cot(self, question: str, plan: str, problem_type: str = "Logic") -> Optional[str]:
         messages = [
-             {"role": "system", "content": "You are a logical reasoning expert."}, 
+            #  {"role": "system", "content": "You are a reasoning expert."}, 
              {"role": "user", "content": prompts.COT_PROMPT.format(question=question, plan=plan)}
         ]
+        #print(messages)
         response = self.llm.chat_completion(messages)
+        #print(response)
+        # Fact Check for Common Sense / Logic types
+        if response and problem_type in ["Common Sense", "Logic"]:
+            print("   [CoT] Fact checking response...")
+            check_msg = [
+                {"role": "user", "content": prompts.COT_FACT_CHECK_PROMPT.format(question=question, reasoning=response)}
+            ]
+            checked_response = self.llm.chat_completion(check_msg)
+            if checked_response:
+                return checked_response
+                
         return response
 
     def solve_react(self, question: str) -> Optional[str]:
@@ -162,15 +175,15 @@ class Agent:
                 total_chars = sum(len(m["content"]) for m in messages)
                 print(f"   [ReAct] History Length after summarization: {total_chars} chars")
 
-                # If still too long after summarization (or summarization was insufficient)
-                if total_chars > 15000 and len(messages) > 4: # Higher threshold for hard cut
-                    print("   [ReAct] History still too long. Applying Hard 3/4 Cut...")
-                    keep_start = messages[:1]
-                    keep_end = messages[-3:]
-                    messages = keep_start + keep_end
-                    # Final total_chars after pruning
-                    total_chars = sum(len(m["content"]) for m in messages) 
-                    print(f"   [ReAct] Pruned History Length: {total_chars} chars")
+                # # If still too long after summarization (or summarization was insufficient)
+                # if total_chars > 15000 and len(messages) > 4: # Higher threshold for hard cut
+                #     print("   [ReAct] History still too long. Applying Hard 3/4 Cut...")
+                #     keep_start = messages[:1]
+                #     keep_end = messages[-3:]
+                #     messages = keep_start + keep_end
+                #     # Final total_chars after pruning
+                #     total_chars = sum(len(m["content"]) for m in messages) 
+                #     print(f"   [ReAct] Pruned History Length: {total_chars} chars")
             
             response = self.llm.chat_completion(messages, stop=["Observation:"])
             if not response:
@@ -241,7 +254,7 @@ class Agent:
         most_common, count = most_common_pair[0]
         
         # Relaxed majority
-        if count >= 2:
+        if count >= 1:
             return most_common
         
         return None
@@ -270,6 +283,7 @@ class Agent:
         if not text: return "Error"
         text = str(text).strip()
         #print(text)
+        
         # 1. Look for \boxed{...} (common in math)
         boxed_match = re.search(r"\\boxed\{(.*?)\}", text)
         if boxed_match:
