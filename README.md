@@ -108,3 +108,12 @@ If the aggregation stage does not yield a majority answer (e.g., all three strat
 -   **LLM Client** (`llm_client.py`): The `LLMClient` class is a simple wrapper around the `requests` library to handle all communication with the OpenAI-style API. It is used by all agent components that need to query the LLM.
 -   **Answer Extraction** (`core.py`): The `Agent.extract_final(text)` function is a vital utility. LLM outputs are often verbose. This function uses a series of regular expressions and fallbacks to robustly extract the final answer from the raw text, looking for patterns like `Final Answer: ...`, `\boxed{...}`, or simply taking the last line of a short response. This ensures that the agent works with clean, consistent data in the aggregation stage.
 
+## AI Usage Acknowledgement
+This project abides by the course policy regarding AI tools. 
+I used Google Gemini as a conceptual thought partner during development.
+
+**Specific usages:**
+* **Conceptual Understanding:** Asked for explanations of "Self-Consistency" and "Reflexion" algorithms.
+* **Debugging:** Used AI to interpret error codes and understand how to handle JSON parsing exceptions.
+
+**Statement of Originality:** All code submitted in this repository was written by me. Where AI provided code snippets for explanation, I rewrote the logic manually to fit my specific architecture and constraints.
