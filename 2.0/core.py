@@ -14,41 +14,41 @@ class Agent:
         plan_output = self.plan(question)
         problem_type, plan_text, strategy = self.parse_plan(plan_output)
         
-        print(f"\n[Plan] Type: {problem_type}, Strategy: {strategy}")
+        #print(f"\n[Plan] Type: {problem_type}, Strategy: {strategy}")
         
         # Execute Strategy with Self-Consistency 
         answers = []
         
         strategies_to_run = []
         if strategy == "Python":
-            strategies_to_run = ["Python", "Python", "CoT", "ReAct"]
+            strategies_to_run = ["Python", "Python", "CoT"]
         else:
             strategies_to_run = ["CoT", "CoT", "ReAct"]
             
         for i, s in enumerate(strategies_to_run):
-            print(f"[Step {i+1}] Executing {s}...")
+            #print(f"[Step {i+1}] Executing {s}...")
             ans = self.execute_strategy(question, plan_text, s, problem_type)
-            print(f"   -> Raw Result: {ans}")
+            #print(f"   -> Raw Result: {ans}")
             if ans:
                 # Cleanup answer immediately
                 cleaned = self.extract_final(ans)
-                print(f"   -> Extracted: {cleaned}")
+                #print(f"   -> Extracted: {cleaned}")
                 if cleaned and cleaned != "Error":
                     answers.append(cleaned)
         
-        # 3. Aggregate
+        # Aggregate (Self Consistency)
         final_answer = self.aggregate_answers(answers)
-        print(f"[Aggregate] Consensus: {final_answer}")
+        #print(f"[Aggregate] Consensus: {final_answer}")
         
-        # 4. Fallback / Self-Correction
+        # Fallback / Self Correction (If we have NO answers or NO consensus, try self correction)
         if not final_answer:
-            print("[Self-Correction] Triggered...")
-            # If we have NO answers or NO consensus, try self-correction
+            #print("[Self-Correction] Triggered...")
             final_answer = self.self_correct(question, answers)
-            print(f"[Self-Correction] Result: {final_answer}")
+            #print(f"[Self-Correction] Result: {final_answer}")
             
         return str(final_answer)
 
+    # Make a Strategic plan for the question
     def plan(self, question: str) -> str:
         messages = [
             {"role": "system", "content": "You are a strategic planner."}, 
@@ -56,6 +56,7 @@ class Agent:
         ]
         return self.llm.chat_completion(messages) or ""
 
+    # Parse the plan to extract information
     def parse_plan(self, plan_text: str) -> Tuple[str, str, str]:
         p_type = "Logic"
         strategy = "Reasoning"
@@ -76,6 +77,7 @@ class Agent:
 
         return p_type, plan_content, strategy
 
+    # Exceute diffrent strategies
     def execute_strategy(self, question: str, plan: str, strategy: str, problem_type: str = "Logic") -> Optional[str]:
         if strategy == "Python":
             return self.solve_pal(question, plan)
@@ -84,6 +86,7 @@ class Agent:
         else: # CoT
             return self.solve_cot(question, plan, problem_type)
 
+    # Python solver
     def solve_pal(self, question: str, plan: str) -> Optional[str]:
         messages = [
             {"role": "user", "content": prompts.PAL_PROMPT.format(question=question, plan=plan)}
@@ -93,7 +96,7 @@ class Agent:
         if not response:
             return None
             
-        # Try to execute up to 3 times (initial + 2 retries)
+        
         current_code = None
         
         # Initial Extraction
@@ -102,8 +105,9 @@ class Agent:
             current_code = code_match.group(1)
         else:
             return None
-        #print(current_code)
-        # Execution Loop
+        
+        
+        # Execution Loop   3 runs (initial + 2 retries)
         for i in range(3):
             result = execute_python(current_code)
             
@@ -113,8 +117,8 @@ class Agent:
                 
             # If error, try to fix 
             if i < 2:
-                print(f"   -> PAL Error: {result}")
-                print("   -> Attempting to fix code...")
+                #print(f"   -> PAL Error: {result}")
+                #print("   -> Attempting to fix code...")
                 
                 fix_prompt = prompts.PAL_ERROR_CORRECTION_PROMPT.format(
                     question=question,
@@ -139,15 +143,13 @@ class Agent:
 
     def solve_cot(self, question: str, plan: str, problem_type: str = "Logic") -> Optional[str]:
         messages = [
-            #  {"role": "system", "content": "You are a reasoning expert."}, 
              {"role": "user", "content": prompts.COT_PROMPT.format(question=question, plan=plan)}
         ]
-        #print(messages)
         response = self.llm.chat_completion(messages)
-        #print(response)
+
         # Fact Check for Common Sense / Logic types
         if response and problem_type in ["Common Sense", "Logic"]:
-            print("   [CoT] Fact checking response...")
+            #print("   [CoT] Fact checking response...")
             check_msg = [
                 {"role": "user", "content": prompts.COT_FACT_CHECK_PROMPT.format(question=question, reasoning=response)}
             ]
@@ -162,33 +164,18 @@ class Agent:
         messages = [{"role": "user", "content": history}]
         
         for i in range(7): # Max 7 steps
-            # Debug: Print total context length
             total_chars = sum(len(m["content"]) for m in messages)
-            print(f"   [ReAct Step {i+1}] History Length: {total_chars} chars")
+            #print(f"   [ReAct Step {i+1}] History Length: {total_chars} chars")
             
-            # Context management: Summarize if too long, then hard cut if still too long.
-            if total_chars > 10000: # Threshold for summarization
-                print(f"   [ReAct] History Length: {total_chars} chars. Attempting summarization...")
-                self._summarize_history(messages)
+            # Context management: Summarize if too long
+            if total_chars > 10000: 
+                self.summarize_history(messages)
                 
-                # Recalculate total_chars after potential summarization
-                total_chars = sum(len(m["content"]) for m in messages)
-                print(f"   [ReAct] History Length after summarization: {total_chars} chars")
-
-                # # If still too long after summarization (or summarization was insufficient)
-                # if total_chars > 15000 and len(messages) > 4: # Higher threshold for hard cut
-                #     print("   [ReAct] History still too long. Applying Hard 3/4 Cut...")
-                #     keep_start = messages[:1]
-                #     keep_end = messages[-3:]
-                #     messages = keep_start + keep_end
-                #     # Final total_chars after pruning
-                #     total_chars = sum(len(m["content"]) for m in messages) 
-                #     print(f"   [ReAct] Pruned History Length: {total_chars} chars")
-            
             response = self.llm.chat_completion(messages, stop=["Observation:"])
             if not response:
                 break
             
+            # Message is a cumilation of all react response
             messages.append({"role": "assistant", "content": response})
             
             if "Final Answer:" in response:
@@ -204,9 +191,6 @@ class Agent:
                     else:
                         obs = execute_python(code)
                     
-                    # Truncate observation if huge
-                    if len(obs) > 2000:
-                        obs = obs[:2000] + "... [Output Truncated]"
                     messages.append({"role": "user", "content": f"Observation: {obs}\n"})
                 else:
                     messages.append({"role": "user", "content": "Observation: Error: No code block found.\n"})
@@ -218,11 +202,10 @@ class Agent:
         
         return None
 
-    def _summarize_history(self, messages: List[dict]):
+    def summarize_history(self, messages: List[dict]):
         # Keep the first message (Prompt + Question)
         # Summarize everything else except the very last one (to keep continuity)
-        if len(messages) < 3: return
-        
+                
         to_summarize = messages[1:-1]
         history_text = "\n".join([f"{m['role']}: {m['content']}" for m in to_summarize])
         
@@ -233,6 +216,7 @@ class Agent:
             # Replace the middle with the summary
             messages[1:-1] = [{"role": "system", "content": f"Previous Steps Summary:\n{summary}"}]
 
+    # Self Consistency, look for most common output
     def aggregate_answers(self, answers: List[str]) -> Optional[str]:
         if not answers:
             return None
@@ -254,17 +238,19 @@ class Agent:
         most_common, count = most_common_pair[0]
         
         # Relaxed majority
-        if count >= 1:
+        if count >= 2:
             return most_common
         
         return None
 
+    # Generate a prompt for itself and then solve if nothing works
     def self_correct(self, question: str, previous_answers: List[str]) -> str:
         attempts_str = "\n".join([f"- {a}" for a in previous_answers])
         prompt = prompts.SELF_CORRECTION_PROMPT.format(question=question, attempts=attempts_str)
         
         messages = [{"role": "user", "content": prompt}]
         response = self.llm.chat_completion(messages)
+
         return self.extract_final(response)
 
     def normalize(self, text: str) -> str:
@@ -284,24 +270,25 @@ class Agent:
         text = str(text).strip()
         #print(text)
         
-        # 1. Look for \boxed{...} (common in math)
+        # Look for \boxed{...} (common in math)
         boxed_match = re.search(r"\\boxed\{(.*?)\}", text)
         if boxed_match:
             return boxed_match.group(1)
-            
-        # 2. Look for "Final Answer: ..."
-        # We use re.IGNORECASE and look for the last occurrence
-        fa_match = re.search(r"Final Answer:\s*(.*)", text, re.IGNORECASE | re.DOTALL)
-        if fa_match:
-            # Take the first line after "Final Answer:" to avoid capturing trailing context
-            return fa_match.group(1).strip().split('\n')[0]
-            
-        # 3. Look for "The answer is ..."
-        ans_match = re.search(r"The answer is\s*(.*)", text, re.IGNORECASE | re.DOTALL)
+        
+        # Look for python code block
+        ans_match = re.search(r"```python\n(.*?)```", text, re.DOTALL)
         if ans_match:
-            return ans_match.group(1).strip().split('.')[0]
+            return ans_match.group(1).strip() 
             
-        # 4. Fallback: If it looks like a single number or short phrase (e.g. from PAL output), return it
+        # Look for "Final Answer: ..."
+        fa_match = re.search(r"Final Answer\s*(.*)", text, re.IGNORECASE | re.DOTALL)
+        if fa_match:
+            # Take everything after final answer
+            raw_output = fa_match.group(1).strip().split('\n')[0]
+            return raw_output
+        
+    
+        # Fallback: If it looks like a single number or short phrase (e.g. from PAL output), return it
         lines = [L.strip() for L in text.split('\n') if L.strip()]
         if lines:
             last_line = lines[-1]

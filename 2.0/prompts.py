@@ -24,7 +24,7 @@ Code:
 ```python
 """
 
-COT_PROMPT = """You are an expert in maths, reasoning, common sense, and general knowledge, think step by step.
+COT_PROMPT = """You are an expert in maths, reasoning, planning, common sense, and general knowledge, think step by step.
 
 Problem: {question}
 Plan: {plan}
@@ -33,9 +33,13 @@ Instructions:
 - For Logical/Math problems: Think step-by-step.
 - For Common Sense/Factual problems: Think step-by-step, Retrieve knowledge and verify facts.
 
+Special Instruction:
+- For writing python code: No reasoning is required just give the code block, no need to follow response structure
+- Give final answer in format: Code: <answer> 
+
 Structure your response as follows:
 1. Reasoning: Be CONCISE (under 1000 words). Focus only on the necessary steps or facts.
-2. Final Answer: Output the result in the format: Final Answer: <answer>
+2. Output the result in the format: Final Answer: <answer>
 
 Do not stop until you have printed the "Final Answer:".
 """
@@ -52,7 +56,7 @@ Thought: you should always think about what to do
 Action: [Python Code / None]
 Action Input: [The python code to run inside ```python ... ```]
 Observation: [The result of the code]
-... (this Thought/Action/Observation can repeat N times)
+(this Thought/Action/Observation can repeat N times)
 Thought: I have the final answer
 Final Answer: [The final answer]
 
