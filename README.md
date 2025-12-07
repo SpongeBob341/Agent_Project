@@ -23,7 +23,7 @@ This initial stage is crucial for guiding the subsequent steps.
 
 -   **Function**: `Agent.plan(question)` in `core.py`
 -   **Prompt**: `PLANNER_PROMPT` in `prompts.py`
--   **Description**: When the `solve` method is called, it first invokes `plan`. This method sends the user's question to the LLM using the `PLANNER_PROMPT`. The LLM's task is to analyze the question and return three key pieces of information:
+-   **Description**: When the `solve` method is called, it first invokes `make_plan`. This method sends the user's question to the LLM using the `PLANNER_PROMPT`. The LLM's task is to analyze the question and return three key pieces of information:
     -   `PROBLEM_TYPE`: A classification of the problem (e.g., `Math`, `Logic`, `Common Sense`).
     -   `PLAN`: A natural language, step-by-step plan to solve the problem.
     -   `STRATEGY_RECOMMENDATION`: A suggestion to either `Use Python` (for calculation-heavy tasks) or `Use Reasoning` (for logic or knowledge-based tasks).
@@ -59,7 +59,7 @@ This strategy offloads calculation and symbolic math to a Python interpreter.
 
 This is the primary strategy for problems requiring logical deduction or general knowledge.
 
--   **Function**: `Agent.solve_cot(question, plan, problem_type)` in `core.py`
+-   **Function**: `Agent.type_cot(question, plan, problem_type)` in `core.py`
 -   **Prompt**: `COT_PROMPT` in `prompts.py`
 -   **Description**:
     1.  `solve_cot` uses the `COT_PROMPT` to ask the LLM to "think step by step" and provide a detailed reasoning process before giving the final answer.
@@ -69,7 +69,7 @@ This is the primary strategy for problems requiring logical deduction or general
 
 This is a more complex, stateful strategy where the agent can iteratively use tools to find an answer.
 
--   **Function**: `Agent.solve_react(question)` in `core.py`
+-   **Function**: `Agent.type_react(question)` in `core.py`
 -   **Prompt**: `REACT_PROMPT` in `prompts.py`
 -   **Description**:
     1.  `solve_react` initiates a loop that can run for a maximum of 7 steps.
@@ -94,7 +94,7 @@ After executing the chosen strategies, the agent may have multiple, potentially 
 
 If the aggregation stage does not yield a majority answer (e.g., all three strategies produced a different answer, or all failed), the agent makes one final attempt.
 
--   **Function**: `Agent.self_correct(question, previous_answers)` in `core.py`
+-   **Function**: `Agent.auto_correct(question, previous_answers)` in `core.py`
 -   **Prompt**: `SELF_CORRECTION_PROMPT` in `prompts.py`
 -   **Description**:
     1.  The `solve` method calls `self_correct` if `aggregate_answers` returns `None`.
@@ -107,3 +107,4 @@ If the aggregation stage does not yield a majority answer (e.g., all three strat
 
 -   **LLM Client** (`llm_client.py`): The `LLMClient` class is a simple wrapper around the `requests` library to handle all communication with the OpenAI-style API. It is used by all agent components that need to query the LLM.
 -   **Answer Extraction** (`core.py`): The `Agent.extract_final(text)` function is a vital utility. LLM outputs are often verbose. This function uses a series of regular expressions and fallbacks to robustly extract the final answer from the raw text, looking for patterns like `Final Answer: ...`, `\boxed{...}`, or simply taking the last line of a short response. This ensures that the agent works with clean, consistent data in the aggregation stage.
+
