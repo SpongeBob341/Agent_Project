@@ -13,9 +13,7 @@ class Agent:
         # Analyze & Plan
         plan_output = self.plan(question)
         problem_type, plan_text, strategy = self.parse_plan(plan_output)
-        
-        #print(f"\n[Plan] Type: {problem_type}, Strategy: {strategy}")
-        
+                
         # Execute Strategy with Self-Consistency 
         answers = []
         
@@ -26,25 +24,18 @@ class Agent:
             strategies_to_run = ["CoT", "CoT", "ReAct"]
             
         for i, s in enumerate(strategies_to_run):
-            #print(f"[Step {i+1}] Executing {s}...")
             ans = self.execute_strategy(question, plan_text, s, problem_type)
-            #print(f"   -> Raw Result: {ans}")
             if ans:
-                # Cleanup answer immediately
                 cleaned = self.extract_final(ans)
-                #print(f"   -> Extracted: {cleaned}")
                 if cleaned and cleaned != "Error":
                     answers.append(cleaned)
         
         # Aggregate (Self Consistency)
         final_answer = self.aggregate_answers(answers)
-        #print(f"[Aggregate] Consensus: {final_answer}")
         
         # Fallback / Self Correction (If we have NO answers or NO consensus, try self correction)
         if not final_answer:
-            #print("[Self-Correction] Triggered...")
             final_answer = self.self_correct(question, answers)
-            #print(f"[Self-Correction] Result: {final_answer}")
             
         return str(final_answer)
 
@@ -116,10 +107,7 @@ class Agent:
                 return result
                 
             # If error, try to fix 
-            if i < 2:
-                #print(f"   -> PAL Error: {result}")
-                #print("   -> Attempting to fix code...")
-                
+            if i < 2:                
                 fix_prompt = prompts.PAL_ERROR_CORRECTION_PROMPT.format(
                     question=question,
                     code=current_code,
@@ -149,7 +137,6 @@ class Agent:
 
         # Fact Check for Common Sense / Logic types
         if response and problem_type in ["Common Sense", "Logic"]:
-            #print("   [CoT] Fact checking response...")
             check_msg = [
                 {"role": "user", "content": prompts.COT_FACT_CHECK_PROMPT.format(question=question, reasoning=response)}
             ]
@@ -165,7 +152,6 @@ class Agent:
         
         for i in range(7): # Max 7 steps
             total_chars = sum(len(m["content"]) for m in messages)
-            #print(f"   [ReAct Step {i+1}] History Length: {total_chars} chars")
             
             # Context management: Summarize if too long
             if total_chars > 10000: 
@@ -204,7 +190,7 @@ class Agent:
 
     def summarize_history(self, messages: List[dict]):
         # Keep the first message (Prompt + Question)
-        # Summarize everything else except the very last one (to keep continuity)
+        # Summarize everything else except the very last one 
                 
         to_summarize = messages[1:-1]
         history_text = "\n".join([f"{m['role']}: {m['content']}" for m in to_summarize])
@@ -268,7 +254,6 @@ class Agent:
     def extract_final(self, text: Optional[str]) -> str:
         if not text: return "Error"
         text = str(text).strip()
-        #print(text)
         
         # Look for \boxed{...} (common in math)
         boxed_match = re.search(r"\\boxed\{(.*?)\}", text)

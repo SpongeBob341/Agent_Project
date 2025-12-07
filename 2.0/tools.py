@@ -66,7 +66,6 @@ def execute_python(code: str, timeout: int = 5) -> str:
     Executes Python code in a separate process with a timeout.
     Returns the captured stdout or an error message.
     """
-    # Clean up code formatting (remove markdown backticks if present)
     code = code.replace("```python", "").replace("```", "").strip()
     
     queue = multiprocessing.Queue()

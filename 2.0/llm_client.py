@@ -15,7 +15,7 @@ class LLMClient:
     def chat_completion(self, 
                         messages: list, 
                         temperature: float = 0.0, 
-                        max_tokens: int = 512,
+                        max_tokens: int = 2048,
                         stop: Optional[List[str]] = None,
                         timeout: int = 120) -> Optional[str]:
         url = f"{self.api_base}/chat/completions"
@@ -23,7 +23,7 @@ class LLMClient:
             "model": self.model,
             "messages": messages,
             "temperature": temperature,
-            "max_tokens": 8000,
+            "max_tokens": max_tokens,
         }
         if stop:
             payload["stop"] = stop
