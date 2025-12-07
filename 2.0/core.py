@@ -11,18 +11,18 @@ class Agent:
 
     def solve(self, question: str) -> str:
         # Plan and extract
-        plan_output = self.make_plan(question)
-        problem_type, plan_text, strategy = self.parse_plan(plan_output)
+        plan_raw = self.make_plan(question)
+        problem_type, plan_text, strategy = self.parse_plan(plan_raw)
                 
         answers = []
         
-        strategies_to_run = []
+        execution_queue = []
         if strategy == "Python":
-            strategies_to_run = ["Python", "Python", "CoT"]
+            execution_queue = ["Python", "Python", "CoT"]
         else:
-            strategies_to_run = ["CoT", "CoT", "ReAct"]
+            execution_queue = ["CoT", "CoT", "ReAct"]
             
-        for i, s in enumerate(strategies_to_run):
+        for i, s in enumerate(execution_queue):
             ans = self.execute_strategy(question, plan_text, s, problem_type)
             if ans:
                 cleaned = self.extract_final(ans)
@@ -45,24 +45,24 @@ class Agent:
 
     # Parse the plan to extract information
     def parse_plan(self, plan_text: str) -> Tuple[str, str, str]:
-        p_type = "Logic"
+        type = "Logic"
         strategy = "Reasoning"
         plan_content = plan_text
         
         type_match = re.search(r"PROBLEM_TYPE:\s*(Math|Logic|Common Sense)", plan_text, re.IGNORECASE)
         if type_match:
-            p_type = type_match.group(1).strip()
+            type = type_match.group(1).strip()
             
         strategy_match = re.search(r"STRATEGY_RECOMMENDATION:\s*(Use Python|Use Reasoning)", plan_text, re.IGNORECASE)
         if strategy_match:
-            strategy = strategy_match.group(1).replace("Use ", "").strip() # "Python" or "Reasoning"
+            strategy = strategy_match.group(1).replace("Use ", "").strip() 
             
         # Extract text between PLAN: and STRATEGY_RECOMMENDATION:
         plan_content_match = re.search(r"PLAN:(.*?)STRATEGY_RECOMMENDATION:", plan_text, re.DOTALL)
         if plan_content_match:
             plan_content = plan_content_match.group(1).strip()
 
-        return p_type, plan_content, strategy
+        return type, plan_content, strategy
 
     # Exceute diffrent strategies
     def execute_strategy(self, question: str, plan: str, strategy: str, problem_type: str = "Logic") -> Optional[str]:
@@ -73,7 +73,7 @@ class Agent:
         else: # CoT
             return self.type_cot(question, plan, problem_type)
 
-    # Python solver
+    # Python solver using PAL
     def solve_pal(self, question: str, plan: str) -> Optional[str]:
         messages = [
             {"role": "user", "content": prompts.PAL_PROMPT.format(question=question, plan=plan)}
@@ -90,8 +90,8 @@ class Agent:
             return None
         
         
-        # 2 runs (initial + 1)
-        for i in range(2):
+        # 3 runs (initial + 2)
+        for i in range(3):
             result = execute_python(current_code)
             if not result.startswith("Error:"):
                 return result
@@ -125,30 +125,30 @@ class Agent:
             check_msg = [
                 {"role": "user", "content": prompts.COT_FACT_CHECK_PROMPT.format(question=question, reasoning=response)}
             ]
-            checked_response = self.llm.chat_completion(check_msg)
-            if checked_response:
-                return checked_response
+            fact_check = self.llm.chat_completion(check_msg)
+            if fact_check:
+                return fact_check
                 
         return response
 
     # ReAct
     def type_react(self, question: str) -> Optional[str]:
         history = prompts.REACT_PROMPT.format(question=question)
-        messages = [{"role": "user", "content": history}]
+        messages_full = [{"role": "user", "content": history}]
         
         for i in range(7): 
-            total_chars = sum(len(m["content"]) for m in messages)
+            t_chars = sum(len(m["content"]) for m in messages_full)
             
             # Context management
-            if total_chars > 10000: # model was hallucinating too much
-                self.sum_history(messages)
+            if t_chars > 10000: # model was hallucinating too much
+                self.sum_history(messages_full)
                 
-            response = self.llm.chat_completion(messages, stop=["Observation:"])
+            response = self.llm.chat_completion(messages_full, stop=["Observation:"])
             if not response:
                 break
             
             # Message is a cumilation of all react response
-            messages.append({"role": "assistant", "content": response})
+            messages_full.append({"role": "assistant", "content": response})
             
             if "Final Answer:" in response:
                 return response.split("Final Answer:")[-1].strip()
@@ -163,23 +163,22 @@ class Agent:
                     else:
                         obs = execute_python(code)
                     
-                    messages.append({"role": "user", "content": f"Observation: {obs}\n"})
+                    messages_full.append({"role": "user", "content": f"Observation: {obs}\n"})
                 else:
-                    messages.append({"role": "user", "content": "Observation: Error: No code block found.\n"})
+                    messages_full.append({"role": "user", "content": "Observation: Error: No code block found.\n"})
             else:
                  # nudge model
-                 messages.append({"role": "user", "content": "Observation: Invalid format. Please use Action: [Python Code / None]\n"})
+                 messages_full.append({"role": "user", "content": "Observation: Invalid format. Please use Action: [Python Code / None]\n"})
         
         return None
 
     def sum_history(self, messages: List[dict]):
-        # Keep the first message
-        # Summarize everything else except the very last one 
+        # Keep the first message. Summarize everything else except the very last one 
                 
         to_summarize = messages[1:-1]
-        history_text = "\n".join([f"{m['role']}: {m['content']}" for m in to_summarize])
+        his_context = "\n".join([f"{m['role']}: {m['content']}" for m in to_summarize])
         
-        prompt = prompts.SUMMARIZE_HISTORY_PROMPT.format(history=history_text)
+        prompt = prompts.SUMMARIZE_HISTORY_PROMPT.format(history=his_context)
         summary = self.llm.chat_completion([{"role": "user", "content": prompt}])
         
         if summary:
@@ -190,22 +189,22 @@ class Agent:
         if not answers:
             return None
         
-        norm_answers = [self.normalize(a) for a in answers]
+        norm_ans = [self.normalize(a) for a in answers]
         
-        norm_answers = [a for a in norm_answers if a]
+        norm_ans = [a for a in norm_ans if a]
         
-        if not norm_answers:
+        if not norm_ans:
             return None
 
-        counts = collections.Counter(norm_answers)
-        most_common_pair = counts.most_common(1)
-        if not most_common_pair:
+        counts = collections.Counter(norm_ans)
+        pairs = counts.most_common(1)
+        if not pairs:
             return None
             
-        most_common, count = most_common_pair[0]
+        mc, c = pairs[0]
 
-        if count >= 2:
-            return most_common
+        if c >= 2:
+            return mc
         
         return None
 
