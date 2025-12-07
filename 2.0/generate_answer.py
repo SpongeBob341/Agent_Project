@@ -15,7 +15,7 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List
 
-# Import the Agent
+# core.py
 from core import Agent
 
 INPUT_PATH = Path("cse_476_final_project_test_data.json")
