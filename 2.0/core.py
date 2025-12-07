@@ -10,11 +10,10 @@ class Agent:
         self.llm = LLMClient()
 
     def solve(self, question: str) -> str:
-        # Analyze & Plan
-        plan_output = self.plan(question)
+        # Plan and extract
+        plan_output = self.make_plan(question)
         problem_type, plan_text, strategy = self.parse_plan(plan_output)
                 
-        # Execute Strategy with Self-Consistency 
         answers = []
         
         strategies_to_run = []
@@ -30,21 +29,18 @@ class Agent:
                 if cleaned and cleaned != "Error":
                     answers.append(cleaned)
         
-        # Aggregate (Self Consistency)
-        final_answer = self.aggregate_answers(answers)
+        # Self Consistency
+        final_answer = self.majority_wins(answers)
         
-        # Fallback / Self Correction (If we have NO answers or NO consensus, try self correction)
+        # Fallback if no answer 
         if not final_answer:
-            final_answer = self.self_correct(question, answers)
+            final_answer = self.auto_correct(question, answers)
             
         return str(final_answer)
 
     # Make a Strategic plan for the question
-    def plan(self, question: str) -> str:
-        messages = [
-            {"role": "system", "content": "You are a strategic planner."}, 
-            {"role": "user", "content": prompts.PLANNER_PROMPT.format(question=question)}
-        ]
+    def make_plan(self, question: str) -> str:
+        messages = [{"role": "user", "content": prompts.PLANNER_PROMPT.format(question=question)}]
         return self.llm.chat_completion(messages) or ""
 
     # Parse the plan to extract information
@@ -61,7 +57,7 @@ class Agent:
         if strategy_match:
             strategy = strategy_match.group(1).replace("Use ", "").strip() # "Python" or "Reasoning"
             
-        # Extract the actual plan text (everything between PLAN: and STRATEGY_RECOMMENDATION:)
+        # Extract text between PLAN: and STRATEGY_RECOMMENDATION:
         plan_content_match = re.search(r"PLAN:(.*?)STRATEGY_RECOMMENDATION:", plan_text, re.DOTALL)
         if plan_content_match:
             plan_content = plan_content_match.group(1).strip()
@@ -73,48 +69,36 @@ class Agent:
         if strategy == "Python":
             return self.solve_pal(question, plan)
         elif strategy == "ReAct":
-            return self.solve_react(question)
+            return self.type_react(question)
         else: # CoT
-            return self.solve_cot(question, plan, problem_type)
+            return self.type_cot(question, plan, problem_type)
 
     # Python solver
     def solve_pal(self, question: str, plan: str) -> Optional[str]:
         messages = [
             {"role": "user", "content": prompts.PAL_PROMPT.format(question=question, plan=plan)}
         ]
+
         response = self.llm.chat_completion(messages)
-        
         if not response:
             return None
-            
-        
-        current_code = None
-        
-        # Initial Extraction
-        code_match = re.search(r"```python(.*?)```", response, re.DOTALL)
+                    
+        code_match = re.search(r"```python(.*?)```", response, re.DOTALL) # extract code
         if code_match:
             current_code = code_match.group(1)
         else:
             return None
         
         
-        # Execution Loop   3 runs (initial + 2 retries)
-        for i in range(3):
+        # 2 runs (initial + 1)
+        for i in range(2):
             result = execute_python(current_code)
-            
-            # If success, return result
             if not result.startswith("Error:"):
                 return result
-                
-            # If error, try to fix 
+
             if i < 2:                
-                fix_prompt = prompts.PAL_ERROR_CORRECTION_PROMPT.format(
-                    question=question,
-                    code=current_code,
-                    error=result
-                )
+                fix_prompt = prompts.PAL_ERROR_CORRECTION_PROMPT.format(question=question,code=current_code,error=result)
                 
-                # Ask LLM for fix
                 messages.append({"role": "user", "content": fix_prompt})
                 response = self.llm.chat_completion(messages)
                 
@@ -129,13 +113,14 @@ class Agent:
                 
         return None
 
-    def solve_cot(self, question: str, plan: str, problem_type: str = "Logic") -> Optional[str]:
+    # Chain of Thoughts
+    def type_cot(self, question: str, plan: str, problem_type: str = "Logic") -> Optional[str]:
         messages = [
              {"role": "user", "content": prompts.COT_PROMPT.format(question=question, plan=plan)}
         ]
         response = self.llm.chat_completion(messages)
 
-        # Fact Check for Common Sense / Logic types
+        # Fact Check 
         if response and problem_type in ["Common Sense", "Logic"]:
             check_msg = [
                 {"role": "user", "content": prompts.COT_FACT_CHECK_PROMPT.format(question=question, reasoning=response)}
@@ -146,16 +131,17 @@ class Agent:
                 
         return response
 
-    def solve_react(self, question: str) -> Optional[str]:
+    # ReAct
+    def type_react(self, question: str) -> Optional[str]:
         history = prompts.REACT_PROMPT.format(question=question)
         messages = [{"role": "user", "content": history}]
         
-        for i in range(7): # Max 7 steps
+        for i in range(7): 
             total_chars = sum(len(m["content"]) for m in messages)
             
-            # Context management: Summarize if too long
-            if total_chars > 10000: 
-                self.summarize_history(messages)
+            # Context management
+            if total_chars > 10000: # model was hallucinating too much
+                self.sum_history(messages)
                 
             response = self.llm.chat_completion(messages, stop=["Observation:"])
             if not response:
@@ -171,7 +157,7 @@ class Agent:
                 code_match = re.search(r"```python(.*?)```", response, re.DOTALL)
                 if code_match:
                     code = code_match.group(1)
-                    # If code is excessively long, don't execute it, just return an error
+
                     if len(code) > 3000: 
                         obs = "Error: Generated code was too long. Please write concise code."
                     else:
@@ -180,16 +166,14 @@ class Agent:
                     messages.append({"role": "user", "content": f"Observation: {obs}\n"})
                 else:
                     messages.append({"role": "user", "content": "Observation: Error: No code block found.\n"})
-            elif "Action: None" in response:
-                 messages.append({"role": "user", "content": "Observation: Continue reasoning.\n"})
             else:
-                 # If model forgets format, nudge it
+                 # nudge model
                  messages.append({"role": "user", "content": "Observation: Invalid format. Please use Action: [Python Code / None]\n"})
         
         return None
 
-    def summarize_history(self, messages: List[dict]):
-        # Keep the first message (Prompt + Question)
+    def sum_history(self, messages: List[dict]):
+        # Keep the first message
         # Summarize everything else except the very last one 
                 
         to_summarize = messages[1:-1]
@@ -199,18 +183,15 @@ class Agent:
         summary = self.llm.chat_completion([{"role": "user", "content": prompt}])
         
         if summary:
-            # Replace the middle with the summary
             messages[1:-1] = [{"role": "system", "content": f"Previous Steps Summary:\n{summary}"}]
 
     # Self Consistency, look for most common output
-    def aggregate_answers(self, answers: List[str]) -> Optional[str]:
+    def majority_wins(self, answers: List[str]) -> Optional[str]:
         if not answers:
             return None
         
-        # Normalize
         norm_answers = [self.normalize(a) for a in answers]
         
-        # Filter empty
         norm_answers = [a for a in norm_answers if a]
         
         if not norm_answers:
@@ -222,15 +203,14 @@ class Agent:
             return None
             
         most_common, count = most_common_pair[0]
-        
-        # Relaxed majority
+
         if count >= 2:
             return most_common
         
         return None
 
     # Generate a prompt for itself and then solve if nothing works
-    def self_correct(self, question: str, previous_answers: List[str]) -> str:
+    def auto_correct(self, question: str, previous_answers: List[str]) -> str:
         attempts_str = "\n".join([f"- {a}" for a in previous_answers])
         prompt = prompts.SELF_CORRECTION_PROMPT.format(question=question, attempts=attempts_str)
         
@@ -255,7 +235,7 @@ class Agent:
         if not text: return "Error"
         text = str(text).strip()
         
-        # Look for \boxed{...} (common in math)
+        # Look for boxed{...} ans
         boxed_match = re.search(r"\\boxed\{(.*?)\}", text)
         if boxed_match:
             return boxed_match.group(1)
@@ -268,16 +248,14 @@ class Agent:
         # Look for "Final Answer: ..."
         fa_match = re.search(r"Final Answer\s*(.*)", text, re.IGNORECASE | re.DOTALL)
         if fa_match:
-            # Take everything after final answer
             raw_output = fa_match.group(1).strip().split('\n')[0]
             return raw_output
         
     
-        # Fallback: If it looks like a single number or short phrase (e.g. from PAL output), return it
+        # Fallback
         lines = [L.strip() for L in text.split('\n') if L.strip()]
         if lines:
             last_line = lines[-1]
-            # If it's short enough, assume it's the answer
             if len(last_line) < 100:
                 return last_line
                 
